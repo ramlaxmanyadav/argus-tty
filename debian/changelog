@@ -1,0 +1,73 @@
+argus-tty (1.0.3) resolute; urgency=medium
+
+  * No source changes; respin for resolute.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Mon, 10 Aug 2026 19:30:00 +0530
+
+argus-tty (1.0.2) noble; urgency=medium
+
+  * No source changes; respin for noble.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Mon, 10 Aug 2026 19:28:00 +0530
+
+argus-tty (1.0.1) jammy; urgency=medium
+
+  * No source changes; respin for jammy.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Mon, 10 Aug 2026 19:25:00 +0530
+
+argus-tty (1.0.0) focal; urgency=medium
+
+  * Initial public release, prepared for Launchpad PPA distribution
+    (ppa:yadavramlaxman/argus-tty).
+  * Reset version scheme to 1.0.0 ahead of the open-source release.
+  * EMAIL_ENABLED now directly controls systemctl enable/disable of the
+    argus-tty-mailer.timer unit, instead of always enabling it regardless
+    of whether email notifications are configured.
+  * Add a new S3_UPLOAD_ENABLED master switch in config.env, mirroring
+    EMAIL_ENABLED: when false, argus-tty-finalize skips S3 upload entirely
+    without even checking for the aws CLI or credentials.
+  * Add MIT LICENSE and debian/copyright.
+  * Add optional Google Authenticator (TOTP) two-factor authentication for
+    developer/admin SSH sessions, gated by GOOGLE_2FA_ENABLED in
+    config.env. Deployer accounts and LITE_RECORDING_USERS are always
+    exempt. New/existing accounts get a TOTP secret auto-provisioned by
+    'argus-tty add'/'add-admin', printed once like the generated PEM key.
+  * Add DEVELOPER_GROUP_NAME/ADMIN_GROUP_NAME/DEPLOYER_GROUP_NAME in
+    config.env, letting an org rename the three tiers. reconfigure safely
+    renames an already-populated Linux group in place (groupmod -n) rather
+    than orphaning existing accounts, and the CLI gains matching
+    add-<term>/bulk-add-<term>s/remove-<term>/list-<term>s aliases
+    alongside the existing verbs, which always keep working.
+  * Remove all references to the private, unpublished "bosun" package from
+    docs, comments, and the shipped defaults — the deployer sudo whitelist
+    and related documentation now describe only what argus-tty itself
+    enforces, generically.
+  * Fix: sshd_config directives outside a Match block use first-occurrence-
+    wins, not last. Stock Ubuntu images ship "ChallengeResponseAuthentication
+    no" earlier in the file than argus-tty's own managed block, which was
+    silently overriding the 2FA feature's override and disabling
+    keyboard-interactive authentication entirely — refusing every SSH
+    login, including for deployer/LITE_RECORDING_USERS accounts that
+    should never even see a prompt. Now neutralized (reversibly) before
+    the managed block is appended.
+  * Fix: the PAM stack backing the 2FA exemption logic had two bugs found
+    via real end-to-end SSH testing: pam_succeed_if's [success=N] jump
+    count was hardcoded to 1 regardless of position, which only worked
+    with a single exemption condition; and the stack had no terminal
+    pam_permit.so for a matched exemption to land on, so a matched
+    condition still resulted in a denied login. Both fixed.
+  * Fix: debian/rules and debian/conffiles referenced
+    /etc/profile.d/developer-restrictions.sh, which is now generated
+    dynamically by reconfigure.sh (from the resolved tier group names)
+    instead of shipped as a static file — this broke the Launchpad
+    (debhelper) build path outright.
+  * Fix: lower debhelper-compat from 13 to 12 so the source package
+    actually builds on Ubuntu 20.04 "focal" (ships debhelper 12.10, not
+    13) — verified by a real build on Ubuntu 20.04/22.04/24.04/26.04.
+  * Fix: install.sh's manual-install path referenced non-existent
+    sudoers/{developer,admin}.sudoers files (missing the .sample suffix)
+    and never installed the deployer sudoers sample, breaking Option C
+    (manual, no .deb) installs entirely.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Mon, 10 Aug 2026 18:29:52 +0530

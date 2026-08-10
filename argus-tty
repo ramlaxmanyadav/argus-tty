@@ -1,0 +1,149 @@
+#!/bin/bash
+# argus-tty — CLI entrypoint for the developer/admin access + session audit
+# toolkit. Works two ways:
+#   - Packaged: installed via the .deb as /usr/bin/argus-tty, dispatching
+#     to helper scripts under /usr/lib/argus-tty/.
+#   - Loose: run as ./argus-tty from a manually-copied checkout (e.g.
+#     /root/argus-tty), dispatching to its own sibling bin/ directory.
+# Auto-detects which context it's running in — no configuration needed.
+#
+# Rails app deployment is out of scope for this package — it provisions
+# developer/admin/deployer accounts, sudo whitelists, and a shared
+# webapps/rvm group scaffolding for whatever deploy tooling you layer on
+# top, but doesn't install or require any specific one itself.
+
+set -euo pipefail
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGED_LIB_DIR="/usr/lib/argus-tty"
+
+if [[ -f "${SELF_DIR}/bin/add-developer.sh" ]]; then
+  BIN_DIR="${SELF_DIR}/bin"
+  RECONFIGURE="${SELF_DIR}/install.sh"
+elif [[ -f "${PACKAGED_LIB_DIR}/bin/add-developer.sh" ]]; then
+  BIN_DIR="${PACKAGED_LIB_DIR}/bin"
+  RECONFIGURE="${PACKAGED_LIB_DIR}/lib/reconfigure.sh"
+else
+  echo "[ERROR] Cannot find argus-tty's helper scripts (looked in ${SELF_DIR}/bin and ${PACKAGED_LIB_DIR}/bin)." >&2
+  exit 1
+fi
+
+# Same lib/ common.sh every bin/ script sources, purely to resolve
+# AT_GROUP/AT_ADMIN_GROUP/AT_DEPLOYER_GROUP for the verb-alias map below —
+# it's a sibling of whichever BIN_DIR was resolved above (loose or packaged).
+LIB_DIR="$(cd "${BIN_DIR}/.." && pwd)/lib"
+# shellcheck source=./lib/common.sh
+source "${LIB_DIR}/common.sh"
+
+# ── Tier-name verb aliases ───────────────────────────────────────────────────
+# DEVELOPER_GROUP_NAME/ADMIN_GROUP_NAME/DEPLOYER_GROUP_NAME in config.env let
+# an org rename the tiers (e.g. ADMIN_GROUP_NAME=sre). The canonical verbs
+# below ALWAYS work regardless — this only ever ADDS a synonym, never takes
+# one away. With no customization configured, ALIAS_MAP stays empty and
+# dispatch is identical to before this existed.
+declare -A ALIAS_MAP=()
+_register_tier_aliases() {
+  local term="$1" default="$2" canonical_add="$3" canonical_bulk="$4" canonical_remove="$5" canonical_list="$6"
+  [[ "$term" == "$default" ]] && return
+  ALIAS_MAP["add-${term}"]="$canonical_add"
+  ALIAS_MAP["bulk-add-${term}s"]="$canonical_bulk"
+  ALIAS_MAP["remove-${term}"]="$canonical_remove"
+  ALIAS_MAP["list-${term}s"]="$canonical_list"
+}
+_register_tier_aliases "$AT_GROUP"          developer "add"          "bulk-add"          "remove"          "list"
+_register_tier_aliases "$AT_ADMIN_GROUP"    admin     "add-admin"    "bulk-add-admins"    "remove-admin"    "list-admins"
+_register_tier_aliases "$AT_DEPLOYER_GROUP" deployer  "add-deployer" "bulk-add-deployers" "remove-deployer" "list-deployers"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  sudo argus-tty install                                      # (re)apply system config: groups, PAM, sshd, systemd, sudoers
+  sudo argus-tty reconfigure                                   # alias for install
+
+  sudo argus-tty add <username> [--name "X"] [--pubkey f]      # onboard one developer
+  sudo argus-tty bulk-add <roster-file>                        # onboard many developers
+  sudo argus-tty remove <username> [--purge-home]              # offboard a developer
+  sudo argus-tty list                                          # show developer roster
+
+  sudo argus-tty add-admin <username> [--name "X"] [--pubkey f]    # onboard one admin (full sudo)
+  sudo argus-tty bulk-add-admins <roster-file>                      # onboard many admins
+  sudo argus-tty remove-admin <username> [--purge-home]             # offboard an admin
+  sudo argus-tty list-admins                                        # show admin roster
+
+  sudo argus-tty add-deployer <username> [--name "X"] [--pubkey f]   # onboard one deployer (deploy/restart only)
+  sudo argus-tty bulk-add-deployers <roster-file>                    # onboard many deployers
+  sudo argus-tty remove-deployer <username> [--purge-home]           # offboard a deployer
+  sudo argus-tty list-deployers                                      # show deployer roster
+
+  sudo argus-tty allow-ip <username> <ip-or-cidr>[,<ip-or-cidr>...]  # restrict a key to specific source IP(s)
+  sudo argus-tty clear-ip <username>                                 # remove that restriction (connect from anywhere again)
+  sudo argus-tty list-ip [username]                                  # show current restriction(s)
+
+  sudo argus-tty status                                       # health check
+
+Notes:
+  --pubkey -      read the public key from stdin
+  --pubkey <file> read the public key from a file
+  (omit --pubkey) a PEM keypair is auto-generated and stored under
+                  /root/argus-tty-developer-keys/ for you to hand off
+  --no-key        create the account with no key at all
+  --print-key     also print a generated private key to stdout
+  --allow-from <ip-or-cidr>[,...]  OPTIONAL, on add/add-admin/add-deployer:
+                  restrict this account's key at onboarding time (same
+                  effect as allow-ip below, just inline). Omit for no
+                  restriction (the default) — never required.
+
+If GOOGLE_2FA_ENABLED=true in config.env, 'add'/'add-admin' also
+auto-generate and print a Google Authenticator (TOTP) secret for the new
+account (deployer accounts are always exempt) — see README.md "Two-factor
+authentication".
+
+allow-ip/clear-ip use OpenSSH's native authorized_keys `from="..."` option —
+sshd enforces it at authentication time, before ForceCommand/session start,
+and it takes effect on the very next connection attempt (no reload needed).
+Comma-separate multiple IPs/CIDRs: `10.0.0.5,203.0.113.0/24`.
+
+Customizing developer/admin/deployer sudo permissions? See
+/etc/argus-tty/{developer,admin,deployer}.sudoers — sudo argus-tty reconfigure
+picks up an override there automatically. Details in README.md.
+
+Want different terminology than developer/admin/deployer (e.g. engineer/
+sre/release)? Set DEVELOPER_GROUP_NAME/ADMIN_GROUP_NAME/DEPLOYER_GROUP_NAME
+in config.env and re-run reconfigure — the verbs above keep working, and
+matching add-<term>/bulk-add-<term>s/remove-<term>/list-<term>s aliases are
+added too. Details in README.md.
+USAGE
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+cmd="$1"; shift
+
+# Translate a customized-term alias verb (e.g. 'add-sre') back to its
+# canonical verb — the case below only ever has to know about
+# developer/admin/deployer, renaming is purely a dispatch-time alias.
+[[ -n "${ALIAS_MAP[$cmd]:-}" ]] && cmd="${ALIAS_MAP[$cmd]}"
+
+case "$cmd" in
+  install|reconfigure)
+    [[ -x "$RECONFIGURE" ]] || { echo "[ERROR] $RECONFIGURE not found or not executable." >&2; exit 1; }
+    exec "$RECONFIGURE" "$@"
+    ;;
+  add)              exec "$BIN_DIR/add-developer.sh" "$@" ;;
+  bulk-add)         exec "$BIN_DIR/bulk-add-developers.sh" "$@" ;;
+  remove)           exec "$BIN_DIR/remove-developer.sh" "$@" ;;
+  list)             exec "$BIN_DIR/list-developers.sh" "$@" ;;
+  add-admin)        exec "$BIN_DIR/add-admin.sh" "$@" ;;
+  bulk-add-admins)  exec "$BIN_DIR/bulk-add-admins.sh" "$@" ;;
+  remove-admin)     exec "$BIN_DIR/remove-admin.sh" "$@" ;;
+  list-admins)      exec "$BIN_DIR/list-admins.sh" "$@" ;;
+  add-deployer)          exec "$BIN_DIR/add-deployer.sh" "$@" ;;
+  bulk-add-deployers)    exec "$BIN_DIR/bulk-add-deployers.sh" "$@" ;;
+  remove-deployer)       exec "$BIN_DIR/remove-deployer.sh" "$@" ;;
+  list-deployers)        exec "$BIN_DIR/list-deployers.sh" "$@" ;;
+  allow-ip)         exec "$BIN_DIR/allow-ip.sh" "$@" ;;
+  clear-ip)         exec "$BIN_DIR/clear-ip.sh" "$@" ;;
+  list-ip)          exec "$BIN_DIR/list-ip.sh" "$@" ;;
+  status)           exec "$BIN_DIR/status.sh" "$@" ;;
+  *) usage ;;
+esac

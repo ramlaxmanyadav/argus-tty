@@ -1,0 +1,36 @@
+# admin.sudoers.sample — the DEFAULT admin sudo grant, shipped read-only at
+# /usr/share/argus-tty/admin.sudoers.sample.
+#
+# If you're reading this at /etc/sudoers.d/admin: DO NOT EDIT IT HERE.
+# `sudo argus-tty reconfigure` re-derives this file on every run from either
+# the shipped sample (this content, unmodified) or your override at
+# /etc/argus-tty/admin.sudoers if that exists — any direct edit here gets
+# silently overwritten on the next reconfigure. To customize:
+#
+#   sudo cp /usr/share/argus-tty/admin.sudoers.sample /etc/argus-tty/admin.sudoers
+#   sudo vi /etc/argus-tty/admin.sudoers
+#   sudo argus-tty reconfigure
+#
+# `reconfigure` validates your override with visudo before installing it —
+# if it's syntactically invalid, reconfigure fails loudly rather than
+# silently falling back to the default.
+#
+# ADMIN TIER: full, unrestricted sudo — equivalent to what the default
+# 'ubuntu' cloud-init user gets out of the box on a stock AMI. Unlike
+# /etc/sudoers.d/developer, there is no command whitelist here; this is a
+# fully trusted tier and is meant to be used sparingly.
+#
+# This does NOT trade away the audit trail: every admin session is still
+# forced through the same TTY recorder as developer sessions (see the
+# "Match Group developer,admin" block in sshd_config) and still uploads to
+# S3 / queues email notifications exactly the same way. Full sudo just means
+# there's no whitelist restricting what they can do once connected — it
+# doesn't mean the connection goes unrecorded.
+
+Defaults:%admin !lecture
+Defaults:%admin env_reset
+Defaults:%admin secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Defaults:%admin log_output
+Defaults:%admin logfile=/var/log/sudo-admin.log
+
+%admin ALL=(ALL) NOPASSWD: ALL

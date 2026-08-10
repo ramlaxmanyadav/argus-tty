@@ -1,0 +1,29 @@
+#!/bin/bash
+# postrm — runs after files are removed. Only `purge` does anything here;
+# plain `remove` leaves /etc/argus-tty's conffiles in place (standard
+# dpkg behavior) in case the package is reinstalled later.
+
+set -e
+
+case "$1" in
+  purge)
+    rm -rf /etc/argus-tty   # includes any developer.sudoers/admin.sudoers override
+    # Only removes the group if it's nobody's primary/supplementary group
+    # anymore — groupdel refuses otherwise, which is the correct, safe
+    # outcome (e.g. webapps: the webapp-svc service account and every
+    # deployed app's puma/sidekiq units still reference it as long as any
+    # app under /var/www is still running).
+    groupdel developer 2>/dev/null || true
+    groupdel admin 2>/dev/null || true
+    groupdel webapps 2>/dev/null || true
+    echo "argus-tty: purged /etc/argus-tty. Left in place on purpose:"
+    echo "  - /var/log/argus-tty/{sessions,notify}   (audit trail)"
+    echo "  - /root/argus-tty-developer-keys/         (generated private keys)"
+    echo "  - developer/admin Linux accounts and home directories"
+    echo "  - the webapp-svc service account (still runs deployed apps' puma/sidekiq)"
+    echo "  - /var/www/<app>/ and its puma-<app>/sidekiq-<app> systemd units"
+    echo "Remove those by hand if you want a completely clean slate."
+    ;;
+esac
+
+exit 0

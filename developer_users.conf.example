@@ -1,0 +1,21 @@
+# Developer roster for bulk onboarding.
+# Format: username:display_name[:ssh_public_key]
+#
+#   username       — lowercase, starts with a letter, max 32 chars (a-z0-9_-)
+#   display_name   — full name, stored in the GECOS field
+#   ssh_public_key — optional; paste the output of: cat ~/.ssh/id_ed25519.pub
+#                    leave blank to add the key later with:
+#                      sudo ./argus-tty add <username> --pubkey -
+#
+# Usage:
+#   cp developer_users.conf.example developer_users.conf   # then edit
+#   sudo ./argus-tty bulk-add developer_users.conf
+#
+# Adding one developer at a time doesn't need this file at all — just run:
+#   sudo ./argus-tty add dev1 --name "Alice Kumar" --pubkey dev1.pub
+#
+# To remove a developer: sudo ./argus-tty remove <username>
+
+# dev1:Alice Kumar:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... dev1@laptop
+# dev2:Bob Singh:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... dev2@laptop
+# dev3:Carol Tan:

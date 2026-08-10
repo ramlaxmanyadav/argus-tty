@@ -1,0 +1,56 @@
+#!/bin/bash
+# prerm — runs before files are removed. Called as `prerm remove` (real
+# uninstall) or `prerm upgrade <new-version>` (about to be replaced by a
+# newer package) — these two cases need very different behavior.
+
+set -e
+
+# Unconditionally unlock the three binaries: needed so dpkg can actually
+# delete them on removal, and harmless/defensive on upgrade too (the new
+# package's preinst also does this).
+for f in /usr/sbin/argus-tty-wrapper /usr/sbin/argus-tty-finalize /usr/sbin/argus-tty-mailer; do
+  chattr -i "$f" 2>/dev/null || true
+done
+
+case "$1" in
+  remove)
+    # Real uninstall only (NOT upgrade) — stop the mailer and remove OUR
+    # sshd Match block so SSH keeps working for developer/admin accounts
+    # after this package is gone. Leaving ForceCommand pointed at a
+    # soon-to-be-deleted binary would break every developer/admin login.
+    systemctl disable --now argus-tty-mailer.timer 2>/dev/null || true
+
+    SSHD_CONF="/etc/ssh/sshd_config"
+    MARKER_START="# BEGIN argus-tty Match block (managed by install.sh)"
+    MARKER_END="# END argus-tty Match block"
+    if [ -f "$SSHD_CONF" ] && grep -qF "$MARKER_START" "$SSHD_CONF"; then
+      cp "$SSHD_CONF" "${SSHD_CONF}.bak.$(date '+%Y%m%d%H%M%S')"
+      awk -v start="$MARKER_START" -v end="$MARKER_END" '
+        $0 == start {skip=1}
+        !skip {print}
+        $0 == end {skip=0}
+      ' "$SSHD_CONF" > "${SSHD_CONF}.tmp"
+      mv "${SSHD_CONF}.tmp" "$SSHD_CONF"
+      if sshd -t 2>/dev/null; then
+        systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null || service ssh reload 2>/dev/null || true
+        echo "argus-tty: removed the sshd Match block. Developer/admin accounts can still log in over plain, UNRECORDED ssh until this package is reinstalled."
+      else
+        echo "argus-tty: WARNING — removing the Match block left sshd_config invalid. NOT reloading sshd; check ${SSHD_CONF} (backup at ${SSHD_CONF}.bak.*) by hand." >&2
+      fi
+    fi
+
+    echo "argus-tty: left /etc/pam.d/su's su-restriction (pam_wheel.so) in place — it references no file this package installed, so it's harmless to keep. Restore /etc/pam.d/su.bak.* yourself if you want stock PAM back."
+    echo "argus-tty: developer/admin Linux accounts were NOT touched. Run 'argus-tty remove <user>' first if you want to offboard them before/after removing this package."
+
+    # /etc/sudoers.d/{developer,admin} are re-derived by reconfigure.sh on
+    # every run (not dpkg conffiles — see build-deb.sh), so dpkg has no idea
+    # they exist and won't clean them up on its own. Once this package (and
+    # its session recording) is gone, a standing sudo grant with no audit
+    # trail behind it is a real gap worth closing, same reasoning as the
+    # sshd Match block above.
+    rm -f /etc/sudoers.d/developer /etc/sudoers.d/admin
+    echo "argus-tty: removed /etc/sudoers.d/{developer,admin} — developer/admin accounts no longer have any sudo access. Re-run 'sudo argus-tty reconfigure' after reinstalling to restore it."
+    ;;
+esac
+
+exit 0

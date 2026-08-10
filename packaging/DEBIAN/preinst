@@ -1,0 +1,16 @@
+#!/bin/bash
+# preinst — runs BEFORE dpkg unpacks this package's files.
+#
+# On upgrade, a previous version of this package may have marked
+# argus-tty-wrapper/-finalize/-mailer immutable (chattr +i). dpkg cannot
+# overwrite an immutable file during unpack — it would fail the upgrade
+# outright — so unlock them here. postinst re-applies chattr +i once the
+# new files are in place.
+
+set -e
+
+for f in /usr/sbin/argus-tty-wrapper /usr/sbin/argus-tty-finalize /usr/sbin/argus-tty-mailer; do
+  chattr -i "$f" 2>/dev/null || true
+done
+
+exit 0

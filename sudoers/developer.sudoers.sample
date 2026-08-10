@@ -1,0 +1,84 @@
+# developer.sudoers.sample — the DEFAULT developer sudo whitelist, shipped
+# read-only at /usr/share/argus-tty/developer.sudoers.sample.
+#
+# If you're reading this at /etc/sudoers.d/developer: DO NOT EDIT IT HERE.
+# `sudo argus-tty reconfigure` re-derives this file on every run from either
+# the shipped sample (this content, unmodified) or your override at
+# /etc/argus-tty/developer.sudoers if that exists — any direct edit here
+# gets silently overwritten on the next reconfigure.
+#
+# To customize developer sudo permissions for your host (add a company-
+# specific whitelisted command, restrict further, whatever):
+#
+#   sudo cp /usr/share/argus-tty/developer.sudoers.sample /etc/argus-tty/developer.sudoers
+#   sudo vi /etc/argus-tty/developer.sudoers
+#   sudo argus-tty reconfigure
+#
+# `reconfigure` validates your override with visudo before installing it —
+# if it's syntactically invalid, reconfigure fails loudly rather than
+# silently falling back to the default, so you always know your override is
+# actually the one in effect.
+#
+# SECURITY MODEL: WHITELIST ONLY.
+# Commands not listed here are DENIED. This blocks:
+#   sudo su, sudo su <user>, sudo -s, sudo -i, sudo bash, sudo sh,
+#   sudo python, sudo perl, sudo env /bin/bash — and any other shell escape.
+# A blacklist using Cmnd_Alias !DENY can be bypassed (symlinks, copying the
+# binary elsewhere, `sudo env /bin/bash`). A whitelist can't: if a command
+# isn't listed, it simply isn't allowed to run as root.
+
+# Per-session settings for developer group
+Defaults:%developer !lecture
+Defaults:%developer timestamp_timeout=5
+Defaults:%developer env_reset
+Defaults:%developer secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Defaults:%developer log_output
+Defaults:%developer logfile=/var/log/sudo-developer.log
+
+# ── Allowed command categories ──────────────────────────────────────────────
+
+# Service and process inspection / control
+Cmnd_Alias DEV_SERVICE = \
+    /usr/bin/systemctl status *, \
+    /usr/bin/systemctl start *, \
+    /usr/bin/systemctl stop *, \
+    /usr/bin/systemctl restart *, \
+    /usr/bin/systemctl reload *, \
+    /usr/bin/systemctl enable *, \
+    /usr/bin/systemctl disable *, \
+    /usr/bin/systemctl daemon-reload, \
+    /usr/bin/journalctl
+
+# Package management
+Cmnd_Alias DEV_PACKAGE = \
+    /usr/bin/apt-get update, \
+    /usr/bin/apt-get upgrade -y, \
+    /usr/bin/apt-get install *, \
+    /usr/bin/apt update, \
+    /usr/bin/apt upgrade -y, \
+    /usr/bin/apt install *
+
+# Process management (send signals to processes, not su to them)
+Cmnd_Alias DEV_PROCESS = \
+    /usr/bin/kill *, \
+    /usr/bin/pkill *
+
+# Container management
+Cmnd_Alias DEV_DOCKER = \
+    /usr/bin/docker *, \
+    /usr/local/bin/docker-compose *, \
+    /usr/bin/docker-compose *
+
+# Console/rake access (via your deploy tool's generated per-app run
+# wrapper, e.g. shared/bin/run): shared/.env is only readable by root and
+# webapp-svc — this is the ONE narrow exception to "developers can't run
+# as other users", scoped to exactly that generated wrapper, not an
+# arbitrary command.
+Cmnd_Alias DEV_APP_RUN = /var/www/*/shared/bin/run *
+
+# ── Grant rule ───────────────────────────────────────────────────────────────
+# Developers may run ONLY the above commands as root (or, for DEV_APP_RUN
+# specifically, as webapp-svc). Nothing else.
+
+%developer ALL=(root) NOPASSWD: DEV_SERVICE, DEV_PACKAGE, DEV_PROCESS, DEV_DOCKER
+%developer ALL=(webapp-svc) NOPASSWD: DEV_APP_RUN

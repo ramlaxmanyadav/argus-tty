@@ -1,0 +1,46 @@
+# deployer.sudoers.sample — the DEFAULT deployer sudo whitelist, shipped
+# read-only at /usr/share/argus-tty/deployer.sudoers.sample.
+#
+# If you're reading this at /etc/sudoers.d/deployer: DO NOT EDIT IT HERE.
+# `sudo argus-tty reconfigure` re-derives this file on every run from either
+# the shipped sample (this content, unmodified) or your override at
+# /etc/argus-tty/deployer.sudoers if that exists — any direct edit here gets
+# silently overwritten on the next reconfigure. To customize:
+#
+#   sudo cp /usr/share/argus-tty/deployer.sudoers.sample /etc/argus-tty/deployer.sudoers
+#   sudo vi /etc/argus-tty/deployer.sudoers
+#   sudo argus-tty reconfigure
+#
+# DEPLOYER TIER: the narrowest tier this toolkit has. Unlike developer.sudoers
+# (service inspection/control, package installs, process signals, docker),
+# this whitelist is JUST enough to restart/start/stop a service after a
+# release — no apt-get, no docker, no kill/pkill, not even `systemctl status`
+# or `journalctl`. This is the FULL extent of what argus-tty itself enforces
+# for this tier. If your own deploy tooling needs a finer-grained
+# restriction — e.g. "this account may only run a deploy/cleanup subcommand,
+# not console/rake/install/setup" — that has to be enforced by that
+# tooling's own role checks (a wrapper script, a CI job identity, etc.), not
+# by sudoers: sudoers only covers the root-requiring parts (systemctl), the
+# rest is plain file permissions under the webapps group that sudo never
+# mediates. Extend the Cmnd_Alias below via the override mechanism (see
+# "To customize" above) for whatever additional commands your tooling
+# actually needs.
+#
+# SECURITY MODEL: WHITELIST ONLY, same as developer.sudoers — commands not
+# listed here are DENIED, blocking sudo su/-s/-i/bash/sh/env-shell-escape
+# tricks entirely rather than trying to blacklist them.
+
+Defaults:%deployer !lecture
+Defaults:%deployer timestamp_timeout=5
+Defaults:%deployer env_reset
+Defaults:%deployer secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Defaults:%deployer log_output
+Defaults:%deployer logfile=/var/log/sudo-deployer.log
+
+Cmnd_Alias DEPLOYER_SERVICE = \
+    /usr/bin/systemctl start *, \
+    /usr/bin/systemctl stop *, \
+    /usr/bin/systemctl restart *
+
+# (root) is intentional, not (ALL) — deployers cannot run as other users.
+%deployer ALL=(root) NOPASSWD: DEPLOYER_SERVICE

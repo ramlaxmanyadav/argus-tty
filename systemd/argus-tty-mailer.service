@@ -1,0 +1,6 @@
+[Unit]
+Description=argus-tty SMTP notification sender (one-shot, run by argus-tty-mailer.timer)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/argus-tty-mailer

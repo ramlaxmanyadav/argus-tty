@@ -1,0 +1,49 @@
+Source: argus-tty
+Section: admin
+Priority: optional
+Maintainer: Ram Laxman Yadav <yadavramlaxman@gmail.com>
+Build-Depends: debhelper-compat (= 12)
+Standards-Version: 4.6.2
+Homepage: https://launchpad.net/~yadavramlaxman/+archive/ubuntu/argus-tty
+Vcs-Browser: https://launchpad.net/~yadavramlaxman/+archive/ubuntu/argus-tty
+Rules-Requires-Root: no
+
+Package: argus-tty
+Architecture: all
+Depends: ${misc:Depends}, openssh-server, sudo, passwd, bsdutils, e2fsprogs, curl, logrotate, systemd
+Suggests: awscli, libpam-google-authenticator
+Description: One-click developer/admin/deployer access with full session auditing
+ Creates real per-user Linux accounts across three tiers (developer: sudo
+ whitelist; admin: full sudo; deployer: narrowest, deploy/restart only),
+ provisions their SSH key (or generates one), forces every SSH session
+ through a TTY + command-history recorder via an sshd Match block (plus an
+ AllowGroups gate that denies login to any account outside these tiers),
+ uploads recordings to S3, and emails connect/disconnect notifications
+ through a privilege-separated SMTP mailer. Every network call (S3, SMTP)
+ is optional and non-blocking: if unconfigured, sessions still record
+ locally and nothing ever holds a connection open.
+ .
+ EMAIL_ENABLED and S3_UPLOAD_ENABLED in /etc/argus-tty/config.env are master
+ on/off switches for the two network integrations: EMAIL_ENABLED directly
+ controls whether the argus-tty-mailer.timer systemd unit is enabled or
+ disabled, and S3_UPLOAD_ENABLED gates the S3 upload logic the same way.
+ .
+ A pre-existing privileged account (e.g. the cloud-init default 'ubuntu'
+ user) can be recorded in "lite" mode instead — command history and session
+ metadata, no full keystroke-by-keystroke transcript — via
+ LITE_RECORDING_USERS in config.env.
+ .
+ GOOGLE_2FA_ENABLED in config.env optionally requires a Google Authenticator
+ (TOTP) code, in addition to the SSH key, for developer/admin sessions —
+ deployer accounts and LITE_RECORDING_USERS are exempt. Off by default.
+ .
+ Developer/admin/deployer sudo permissions are whitelists you can override
+ per host — see /etc/argus-tty/{developer,admin,deployer}.sudoers. The tier
+ names themselves are also customizable, via DEVELOPER_GROUP_NAME/
+ ADMIN_GROUP_NAME/DEPLOYER_GROUP_NAME in config.env.
+ .
+ Every account also joins a shared webapps group (and rvm, if installed),
+ scaffolding for whatever app-deployment tooling you layer on top of these
+ accounts — this package doesn't install or require any specific one.
+ .
+ Run `sudo argus-tty status` after install to check configuration.

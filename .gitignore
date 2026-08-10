@@ -1,0 +1,49 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings (personal to this machine/session, not shared)
+.claude/settings.local.json
+
+# build-deb.sh output
+dist/
+
+# Debian source/binary package build residue (created by `dpkg-buildpackage`/
+# `debuild` run directly in this tree, e.g. per PACKAGING.md's local sanity
+# check step) — dpkg-source's own default builds land one directory ABOVE
+# this repo, but a full binary build (`-b`) writes these inside it.
+debian/argus-tty/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+
+# Stray source/binary package artifacts, in case they ever land inside the
+# repo instead of the parent directory
+*.deb
+*.dsc
+*.changes
+*.buildinfo
+*.tar.xz
+*.tar.gz
+
+# Real, non-example config — only the .example templates are meant to be
+# tracked; a real config.env/smtp-credentials.env could contain live
+# secrets (SMTP password) if ever created here for local testing.
+config/config.env
+config/smtp-credentials.env
+
+# Never commit exported/encrypted key material or account-verification
+# messages that might get dropped into the repo by mistake (e.g. a
+# Launchpad ownership-confirmation PGP message).
+confirm.asc
+*.gpg
+secring.*

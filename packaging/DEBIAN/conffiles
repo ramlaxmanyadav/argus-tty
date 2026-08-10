@@ -1,0 +1,3 @@
+/etc/argus-tty/config.env
+/etc/argus-tty/smtp-credentials.env
+/etc/logrotate.d/argus-tty

@@ -1,0 +1,29 @@
+#!/bin/bash
+# postinst — runs after dpkg has unpacked every file (including conffiles)
+# at its canonical location. Delegates all actual system configuration
+# (groups, chattr +i, PAM, sshd Match block, systemd timer, sudoers
+# validation, advisory AWS/SMTP checks) to the same idempotent script the
+# manual install.sh calls, so the packaged and manual paths never drift
+# apart.
+#
+# Deliberately does NOT swallow errors: if reconfigure.sh fails (e.g. sshd
+# config validation), this script exits non-zero too, so dpkg correctly
+# reports the package as failed-to-configure instead of silently leaving
+# sshd/PAM in a broken state. Fix the reported issue and re-run
+# `sudo dpkg --configure argus-tty` (or `sudo apt install -f`).
+
+set -e
+
+case "$1" in
+  configure)
+    /usr/lib/argus-tty/lib/reconfigure.sh
+    echo ""
+    echo "argus-tty installed. Edit /etc/argus-tty/config.env and"
+    echo "/etc/argus-tty/smtp-credentials.env, then re-run:"
+    echo "  sudo argus-tty reconfigure"
+    echo "Onboard your first developer with:"
+    echo "  sudo argus-tty add <username> --pubkey <file>"
+    ;;
+esac
+
+exit 0

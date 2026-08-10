@@ -1,0 +1,11 @@
+/var/log/argus-tty/sessions/*.tty
+/var/log/argus-tty/sessions/*.hist
+/var/log/argus-tty/sessions/*.meta
+{
+    daily
+    rotate 30
+    compress
+    missingok
+    notifempty
+    sharedscripts
+}

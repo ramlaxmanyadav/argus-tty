@@ -1,0 +1,83 @@
+#!/usr/bin/make -f
+# debian/rules — builds the argus-tty binary package for a proper Debian
+# *source* package (needed for Launchpad PPA uploads via dput; the .deb
+# produced by build-deb.sh is a fine standalone artifact but is NOT a source
+# package and can't be uploaded to a PPA — Launchpad's builders compile from
+# source themselves).
+#
+# There is no compiled artifact here (this is a shell-script toolkit), so
+# dh_auto_configure/dh_auto_build are no-ops by default; override_dh_auto_install
+# mirrors, file-for-file, the same FHS layout build-deb.sh assembles by hand
+# — keep the two in sync if you add/rename/move a shipped file.
+
+PKG := debian/argus-tty
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -d -m 755 \
+		$(PKG)/usr/bin \
+		$(PKG)/usr/sbin \
+		$(PKG)/usr/lib/argus-tty/bin \
+		$(PKG)/usr/lib/argus-tty/lib \
+		$(PKG)/usr/lib/systemd/system \
+		$(PKG)/usr/share/argus-tty \
+		$(PKG)/usr/share/doc/argus-tty \
+		$(PKG)/etc/argus-tty \
+		$(PKG)/etc/logrotate.d
+
+	install -m 755 argus-tty "$(PKG)/usr/bin/argus-tty"
+
+	install -m 755 bin/argus-tty-wrapper.sh  "$(PKG)/usr/sbin/argus-tty-wrapper"
+	install -m 755 bin/argus-tty-finalize.sh "$(PKG)/usr/sbin/argus-tty-finalize"
+	install -m 700 bin/argus-tty-mailer.sh   "$(PKG)/usr/sbin/argus-tty-mailer"
+
+	install -m 644 systemd/argus-tty-mailer.service "$(PKG)/usr/lib/systemd/system/"
+	install -m 644 systemd/argus-tty-mailer.timer   "$(PKG)/usr/lib/systemd/system/"
+
+	for f in add-developer.sh bulk-add-developers.sh remove-developer.sh list-developers.sh \
+	         add-admin.sh bulk-add-admins.sh remove-admin.sh list-admins.sh \
+	         add-deployer.sh bulk-add-deployers.sh remove-deployer.sh list-deployers.sh \
+	         allow-ip.sh clear-ip.sh list-ip.sh status.sh; do \
+	  install -m 755 "bin/$$f" "$(PKG)/usr/lib/argus-tty/bin/$$f"; \
+	done
+	install -m 644 lib/common.sh      "$(PKG)/usr/lib/argus-tty/lib/common.sh"
+	install -m 755 lib/reconfigure.sh "$(PKG)/usr/lib/argus-tty/lib/reconfigure.sh"
+
+	install -m 644 config/config.env.example          "$(PKG)/etc/argus-tty/config.env"
+	install -m 600 config/smtp-credentials.env.example "$(PKG)/etc/argus-tty/smtp-credentials.env"
+	install -m 644 logrotate/argus-tty                 "$(PKG)/etc/logrotate.d/argus-tty"
+	# /etc/profile.d/developer-restrictions.sh is NOT shipped here — postinst's
+	# call into lib/reconfigure.sh generates it directly from the resolved
+	# tier group names on every install/upgrade.
+
+	install -m 644 sudoers/developer.sudoers.sample "$(PKG)/usr/share/argus-tty/developer.sudoers.sample"
+	install -m 644 sudoers/admin.sudoers.sample     "$(PKG)/usr/share/argus-tty/admin.sudoers.sample"
+	install -m 644 sudoers/deployer.sudoers.sample  "$(PKG)/usr/share/argus-tty/deployer.sudoers.sample"
+
+# Maintainer scripts live under packaging/DEBIAN/ (the single source of
+# truth also used by build-deb.sh's raw dpkg-deb path) — copy them into
+# debian/ just before dh_installdeb packages them, rather than duplicating
+# their content here.
+override_dh_installdeb:
+	cp packaging/DEBIAN/preinst  debian/preinst
+	cp packaging/DEBIAN/postinst debian/postinst
+	cp packaging/DEBIAN/prerm    debian/prerm
+	cp packaging/DEBIAN/postrm   debian/postrm
+	dh_installdeb
+
+# Systemd units are enabled/disabled by lib/reconfigure.sh itself (gated on
+# EMAIL_ENABLED — see config.env.example), not by debhelper's own
+# postinst/postrm boilerplate — suppress dh_installsystemd's automatic
+# enable/start so the two mechanisms don't fight each other.
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+# dh_fixperms resets most permissions to distro defaults (0644 files,
+# 0755 dirs) — reapply the two intentionally-narrower modes it would
+# otherwise clobber.
+override_dh_fixperms:
+	dh_fixperms
+	chmod 700 "$(PKG)/usr/sbin/argus-tty-mailer"
+	chmod 600 "$(PKG)/etc/argus-tty/smtp-credentials.env"

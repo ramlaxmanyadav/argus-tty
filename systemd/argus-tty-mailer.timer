@@ -1,0 +1,15 @@
+[Unit]
+Description=Run argus-tty-mailer every 30s to drain queued session notifications
+
+[Timer]
+# OnActiveSec guarantees a first run ~30s after `systemctl enable --now`
+# regardless of how long the system has been up — without it, a timer
+# enabled long after boot can end up waiting on OnBootSec/OnUnitActiveSec
+# baselines that never arrive until the next reboot.
+OnActiveSec=30s
+OnBootSec=30s
+OnUnitActiveSec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
