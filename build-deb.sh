@@ -71,7 +71,7 @@ install -m 644 systemd/argus-tty-mailer.timer   "${STAGING}/usr/lib/systemd/syst
 for f in add-developer.sh bulk-add-developers.sh remove-developer.sh list-developers.sh \
          add-admin.sh bulk-add-admins.sh remove-admin.sh list-admins.sh \
          add-deployer.sh bulk-add-deployers.sh remove-deployer.sh list-deployers.sh \
-         allow-ip.sh clear-ip.sh list-ip.sh status.sh; do
+         allow-ip.sh clear-ip.sh list-ip.sh export-users.sh import-users.sh status.sh; do
   install -m 755 "bin/${f}" "${STAGING}/usr/lib/argus-tty/bin/${f}"
 done
 install -m 644 lib/common.sh       "${STAGING}/usr/lib/argus-tty/lib/common.sh"

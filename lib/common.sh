@@ -119,6 +119,61 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || error "Must run as root (use: sudo $0 $*)"
 }
 
+# System packages argus-tty's own scripts call directly (chattr/lsattr from
+# e2fsprogs, visudo from sudo, script from bsdutils, curl, logrotate,
+# systemctl from systemd, sshd from openssh-server, setfacl/getfacl from acl
+# — used for the per-file ACL grant on a deployed app's shared/.env, see
+# reconfigure.sh). Mirrors Depends: in debian/control and
+# packaging/DEBIAN/control — keep all three in sync. The .deb gets these for
+# free via `apt install ./argus-tty.deb` (apt resolves Depends before dpkg
+# ever unpacks), but install.sh's manual path has no dependency resolution
+# of its own — this is what gives it the same guarantee.
+AT_REQUIRED_PACKAGES=(openssh-server sudo passwd bsdutils e2fsprogs curl logrotate systemd acl)
+
+# _apt_get <args...> — every apt-get call this toolkit makes on the user's
+# own behalf goes through this, never a bare `apt-get`:
+#   - DEBIAN_FRONTEND=noninteractive + </dev/null: a package whose postinst
+#     would otherwise prompt (a debconf question) can't block waiting on a
+#     TTY that isn't there during an unattended install/reconfigure run.
+#   - -qq -o Dpkg::Use-Pty=0: without this, apt/dpkg assume an interactive
+#     terminal and emit a redrawing progress bar as raw control characters
+#     — harmless on a real TTY, but when this script's output is captured
+#     to a log (cloud-init, CI, `script`, a provisioning tool) that becomes
+#     thousands of near-unreadable lines. This is the standard fix.
+_apt_get() {
+  DEBIAN_FRONTEND=noninteractive apt-get -qq -o Dpkg::Use-Pty=0 "$@" </dev/null
+}
+
+# ensure_required_packages — install any of AT_REQUIRED_PACKAGES not already
+# present, via apt-get. Idempotent; safe to call on every run. Called by
+# both install.sh and reconfigure.sh, so a later `argus-tty reconfigure`
+# also recovers if a required package was removed by hand after install.
+ensure_required_packages() {
+  command -v dpkg &>/dev/null || {
+    warn "Not a dpkg-based system — skipping automatic dependency install. Ensure these are installed manually: ${AT_REQUIRED_PACKAGES[*]}"
+    return
+  }
+
+  local pkg missing=()
+  for pkg in "${AT_REQUIRED_PACKAGES[@]}"; do
+    dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return
+
+  command -v apt-get &>/dev/null \
+    || error "Missing required package(s): ${missing[*]} — install them manually (no apt-get on this system)."
+
+  info "Installing missing required package(s): ${missing[*]}..."
+  # A stale/empty package index (common on a freshly-booted cloud image) is
+  # the single most common reason the install below fails outright — update
+  # first so this is actually hands-off. Non-fatal: an air-gapped host with
+  # no reachable mirror still gets a chance to install from whatever's
+  # already cached.
+  _apt_get update || warn "'apt-get update' failed (no network/mirror reachable?) — trying install anyway with the existing package index."
+  _apt_get install -y "${missing[@]}" \
+    || error "Failed to install: ${missing[*]}. Check network/mirror reachability, or install them manually on an air-gapped host."
+}
+
 # refuse_unsafe_dir <dir> — reject /tmp-like or non-root-owned/world-writable
 # deploy directories. A developer with write access to the deploy dir could
 # swap these files for malicious versions before root runs them.

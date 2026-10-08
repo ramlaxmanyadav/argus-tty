@@ -4,36 +4,27 @@ Section: admin
 Priority: optional
 Architecture: all
 Maintainer: Ram Laxman Yadav <yadavramlaxman@gmail.com>
-Depends: openssh-server, sudo, passwd, bsdutils, e2fsprogs, curl, logrotate, systemd
+Depends: openssh-server, sudo, passwd, bsdutils, e2fsprogs, curl, logrotate, systemd, acl
 Suggests: awscli, libpam-google-authenticator
-Homepage: https://launchpad.net/~yadavramlaxman/+archive/ubuntu/argus-tty
-Description: One-click developer/admin/deployer access with full session auditing
- Creates real per-user Linux accounts across three tiers (developer: sudo
- whitelist; admin: full sudo; deployer: narrowest, deploy/restart only),
- provisions their SSH key (or generates one), forces every SSH session
- through a TTY + command-history recorder via an sshd Match block (plus an
- AllowGroups gate that denies login to any account outside these tiers),
- uploads recordings to S3, and emails connect/disconnect notifications
- through a privilege-separated SMTP mailer. Every network call (S3, SMTP)
- is optional and non-blocking: if unconfigured, sessions still record
- locally and nothing ever holds a connection open.
+Homepage: https://github.com/ramlaxmanyadav/argus-tty
+Description: SSH session auditing and tiered sudo access control for Linux fleets
+ Provisions real per-user Linux accounts across three tiers — developer,
+ admin, deployer — each with its own scoped sudo whitelist, and forces
+ every SSH session through a TTY and command-history recorder. No shared
+ root/deploy account, so every command is attributable to the person who
+ ran it.
  .
- A pre-existing privileged account (e.g. the cloud-init default 'ubuntu'
- user) can be recorded in "lite" mode instead — command history and session
- metadata, no full keystroke-by-keystroke transcript — via
- LITE_RECORDING_USERS in config.env.
+ Session recordings ship to S3 and connect/disconnect email alerts go out
+ through a privilege-separated SMTP mailer — both optional and
+ non-blocking; sessions always record locally first, and neither ever
+ holds a login open. Optional Google Authenticator (TOTP) two-factor
+ authentication is also available for developer/admin sessions, and the
+ tier names themselves are customizable.
  .
- GOOGLE_2FA_ENABLED in config.env optionally requires a Google Authenticator
- (TOTP) code, in addition to the SSH key, for developer/admin sessions —
- deployer accounts and LITE_RECORDING_USERS are exempt. Off by default.
+ Installs as a single .deb: `apt install` across a fleet instead of
+ hand-rolling sshd_config + PAM + a TTY recorder per box.
  .
- Developer/admin/deployer sudo permissions are whitelists you can override
- per host — see /etc/argus-tty/{developer,admin,deployer}.sudoers. The tier
- names themselves are also customizable, via DEVELOPER_GROUP_NAME/
- ADMIN_GROUP_NAME/DEPLOYER_GROUP_NAME in config.env.
- .
- Every account also joins a shared webapps group (and rvm, if installed),
- scaffolding for whatever app-deployment tooling you layer on top of these
- accounts — this package doesn't install or require any specific one.
+ Full configuration reference, architecture notes, and source:
+ https://github.com/ramlaxmanyadav/argus-tty
  .
  Run `sudo argus-tty status` after install to check configuration.

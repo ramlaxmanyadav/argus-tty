@@ -506,6 +506,8 @@ sudo argus-tty list-admins   # admin roster
 sudo argus-tty status        # health check: sshd config, mailer timer, aws cli, S3, SMTP, disk usage
 sudo argus-tty remove dev1                # offboard, keep home dir
 sudo argus-tty remove dev1 --purge-home   # offboard, delete home dir too
+sudo argus-tty export /root/users.conf    # dump every account + key, all tiers (see "Replicating to more machines")
+sudo argus-tty import /root/users.conf    # recreate them on another machine
 ```
 
 Session recordings land in S3 at:
@@ -537,6 +539,29 @@ box. Note that `/root/argus-tty-developer-keys/` (where auto-generated PEM
 files land) is a runtime directory, never shipped in the package, so
 installing on a new machine never drags another machine's private keys
 along with it.
+
+To clone an **existing** machine's actual accounts (not just a roster you
+maintain by hand) onto a new one — every developer/admin/deployer, every
+key currently in their `authorized_keys`, and any `allow-ip` restriction —
+use `export`/`import` instead:
+
+```bash
+# on the source machine
+sudo argus-tty export /root/users.conf
+
+# on the new machine (after installing the .deb and running reconfigure)
+scp root@old-host:/root/users.conf /root/users.conf
+sudo argus-tty import /root/users.conf
+```
+
+`export` writes one line per account (`tier|username|display_name|
+allow_from|keys`) covering all three tiers; `import` is idempotent, built
+on the same `add-developer.sh`/`add-admin.sh`/`add-deployer.sh` path as
+`add`/`bulk-add`, so re-running it just reconciles. It never carries
+private keys (only the public half ever lives in `authorized_keys`) or
+Google Authenticator secrets — 2FA re-enrolls fresh on the target if
+`GOOGLE_2FA_ENABLED=true` there. `sudo argus-tty export` with no file
+argument prints to stdout instead of writing a file.
 
 ## Test checklist before you walk away from a session
 

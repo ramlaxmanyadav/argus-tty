@@ -79,6 +79,9 @@ Usage:
   sudo argus-tty clear-ip <username>                                 # remove that restriction (connect from anywhere again)
   sudo argus-tty list-ip [username]                                  # show current restriction(s)
 
+  sudo argus-tty export [output-file]                          # dump every developer/admin/deployer (+ all their keys) to a portable roster
+  sudo argus-tty import <roster-file>                          # recreate accounts/keys from a roster on this machine
+
   sudo argus-tty status                                       # health check
 
 Notes:
@@ -97,6 +100,12 @@ If GOOGLE_2FA_ENABLED=true in config.env, 'add'/'add-admin' also
 auto-generate and print a Google Authenticator (TOTP) secret for the new
 account (deployer accounts are always exempt) — see README.md "Two-factor
 authentication".
+
+export/import move the full developer/admin/deployer roster (every account,
+every key in authorized_keys, and any allow-ip restriction) to/from a
+single portable file — e.g. to clone one host's roster onto another. Never
+carries private keys or Google Authenticator (TOTP) secrets; 2FA
+re-enrolls fresh on import if GOOGLE_2FA_ENABLED=true on the target.
 
 allow-ip/clear-ip use OpenSSH's native authorized_keys `from="..."` option —
 sshd enforces it at authentication time, before ForceCommand/session start,
@@ -144,6 +153,8 @@ case "$cmd" in
   allow-ip)         exec "$BIN_DIR/allow-ip.sh" "$@" ;;
   clear-ip)         exec "$BIN_DIR/clear-ip.sh" "$@" ;;
   list-ip)          exec "$BIN_DIR/list-ip.sh" "$@" ;;
+  export)           exec "$BIN_DIR/export-users.sh" "$@" ;;
+  import)           exec "$BIN_DIR/import-users.sh" "$@" ;;
   status)           exec "$BIN_DIR/status.sh" "$@" ;;
   *) usage ;;
 esac

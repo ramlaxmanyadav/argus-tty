@@ -25,6 +25,10 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${LIB_DIR}/common.sh"
 
 require_root
+
+section "Required system packages"
+ensure_required_packages
+
 command -v visudo &>/dev/null || error "'visudo' not found. Install sudo: apt-get install -y sudo"
 
 # ── Groups ───────────────────────────────────────────────────────────────────
@@ -60,9 +64,6 @@ else
   groupadd "$AT_WEBAPPS_GROUP"
   info "Created group '$AT_WEBAPPS_GROUP'."
 fi
-
-command -v setfacl &>/dev/null \
-  || warn "'setfacl' not found — per-file ACL grants (e.g. for a deployed app's shared/.env) will fail until you install it: apt-get install -y acl"
 
 # ── Sudoers: developer/deployer whitelists + admin full-sudo, override-aware
 # /etc/sudoers.d/{developer,admin,deployer} are RE-DERIVED on every run from
@@ -324,8 +325,9 @@ if [[ -f "$AT_PAM_SSHD" ]]; then
   if [[ "${GOOGLE_2FA_ENABLED:-false}" == "true" ]]; then
     if ! (command -v dpkg &>/dev/null && dpkg -s libpam-google-authenticator &>/dev/null); then
       info "Installing libpam-google-authenticator..."
-      apt-get install -y libpam-google-authenticator \
-        || error "Failed to install libpam-google-authenticator. Try 'sudo apt-get update' then re-run reconfigure, or install it manually on an air-gapped host, then re-run reconfigure."
+      _apt_get update || warn "'apt-get update' failed (no network/mirror reachable?) — trying install anyway with the existing package index."
+      _apt_get install -y libpam-google-authenticator \
+        || error "Failed to install libpam-google-authenticator. Check network/mirror reachability, or install it manually on an air-gapped host, then re-run reconfigure."
     fi
     command -v google-authenticator &>/dev/null \
       || error "libpam-google-authenticator is installed but 'google-authenticator' still isn't on PATH — installation looks broken."

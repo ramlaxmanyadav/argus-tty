@@ -29,6 +29,9 @@ source "${SCRIPT_DIR}/lib/common.sh"
 require_root
 refuse_unsafe_dir "$SCRIPT_DIR"
 
+section "Required system packages"
+ensure_required_packages
+
 for f in bin/argus-tty-wrapper.sh bin/argus-tty-finalize.sh bin/argus-tty-mailer.sh \
          systemd/argus-tty-mailer.service systemd/argus-tty-mailer.timer \
          config/config.env.example config/smtp-credentials.env.example \
