@@ -1,8 +1,26 @@
-argus-tty (1.0.3) resolute; urgency=medium
+argus-tty (1.0.4) resolute; urgency=medium
 
-  * No source changes; respin for resolute.
+  * install.sh and reconfigure.sh now auto-install every package argus-tty
+    depends on (openssh-server, sudo, passwd, bsdutils, e2fsprogs, curl,
+    logrotate, systemd, acl) via apt-get if missing, instead of just
+    warning — a fresh host no longer needs manual pre-install before
+    either path. acl is new here (needed for setfacl, used for the
+    per-file ACL grant on a deployed app's shared/.env) and has been
+    added to Depends: in debian/control and packaging/DEBIAN/control too.
+  * All apt-get calls now go through a shared helper
+    (DEBIAN_FRONTEND=noninteractive, -qq -o Dpkg::Use-Pty=0, stdin from
+    /dev/null) so installs never block on a TTY prompt and don't flood
+    captured logs (cloud-init, CI) with progress-bar control characters.
+    apt-get update now runs first (non-fatal) so a stale package index no
+    longer fails the install outright.
+  * Add `argus-tty export`/`import`: dump every developer/admin/deployer
+    account (all tiers, every authorized_keys entry, any allow-ip
+    restriction) to a single portable roster file and replay it on
+    another machine — for cloning a host's actual accounts instead of
+    hand-rolling a roster file. Never carries private keys or Google
+    Authenticator (TOTP) secrets.
 
- -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Mon, 10 Aug 2026 19:30:00 +0530
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 08 Oct 2026 14:54:59 +0530
 
 argus-tty (1.0.2) noble; urgency=medium
 
