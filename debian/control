@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Ram Laxman Yadav <yadavramlaxman@gmail.com>
 Build-Depends: debhelper-compat (= 12)
-Standards-Version: 4.6.2
+Standards-Version: 4.7.3
 Homepage: https://github.com/ramlaxmanyadav/argus-tty
 Vcs-Browser: https://github.com/ramlaxmanyadav/argus-tty
 Vcs-Git: https://github.com/ramlaxmanyadav/argus-tty.git

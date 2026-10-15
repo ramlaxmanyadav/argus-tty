@@ -1,3 +1,55 @@
+argus-tty (1.0.6) resolute; urgency=medium
+
+  * add-developer.sh now calls retrofit_webapps_rvm_membership directly on
+    every onboard (new helper, factored out of reconfigure.sh's inline
+    retrofit loop into lib/common.sh), so an existing account re-run
+    through `argus-tty add` picks up webapps/rvm membership immediately —
+    previously only a separate `argus-tty reconfigure` did this.
+    reconfigure.sh's own retrofit step now just calls the same function.
+  * Drop a stray comment reference to the private, unpublished "bosun"
+    package reintroduced by the refactor above — this project's 1.0.0
+    changelog already documented removing every such reference, and this
+    one shouldn't have come back.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:20:19 +0530
+
+argus-tty (1.0.5) resolute; urgency=medium
+
+  * Fix: ensure_required_packages (install.sh/reconfigure.sh auto-install)
+    used `dpkg -s` to check whether a package was present, but `dpkg -s`
+    exits 0 even for a package that's been removed with its conffiles left
+    behind ("deinstall ok config-files") — only dpkg having NO record of
+    the package at all makes it fail. That meant a genuinely-missing
+    required package (e.g. curl removed by hand after install) could be
+    silently treated as present and never reinstalled. Now checks the
+    actual dpkg-query Status field for "install ok installed". Found via a
+    real removal/reconfigure test in a Ubuntu 26.04 container.
+  * Fix: `argus-tty list-ip` silently printed only the header row and
+    exited 1 with no error, because of `set -euo pipefail` plus `grep`
+    exiting 1 for its very common no-match case (an account with no IP
+    restriction) inside a `$(...)` assignment — the whole script aborted
+    the instant it reached the first unrestricted account, which is most
+    fleets. Same latent bug existed in reconfigure.sh's log_output/logfile
+    sudoers-line stripping (an edge case, not hit in normal use). Both now
+    guarded with `|| true`.
+  * Bump Standards-Version to 4.7.3 (lintian: out-of-date-standards-version).
+    debhelper-compat stays at 12, and the Priority/Rules-Requires-Root
+    fields stay explicit, despite lintian's pedantic suggestions otherwise
+    — both are deliberate for staying buildable on older series (focal/
+    jammy) this PPA still serves; see debian/changelog's 1.0.0 entry.
+  * Verified end-to-end in a real Ubuntu 26.04 "resolute" container:
+    shellcheck clean (warning+) across every shipped script, `lintian`
+    clean at default severity, dpkg-buildpackage source build, apt install
+    of the built .deb, install.sh's manual path on a box missing
+    openssh-server/curl/bsdutils/acl/logrotate (confirms auto-install
+    actually recovers them), a real SSH login through the wrapper
+    (interactive and non-interactive) with session recording confirmed in
+    .tty/.meta, and a full export → remove accounts → import round-trip
+    across all three tiers (developer/admin/deployer), including a
+    multi-key account and an allow-ip restriction.
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:17:15 +0530
+
 argus-tty (1.0.4) resolute; urgency=medium
 
   * install.sh and reconfigure.sh now auto-install every package argus-tty

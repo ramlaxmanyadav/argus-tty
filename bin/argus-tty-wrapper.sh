@@ -38,7 +38,7 @@ FINALIZE_BIN="/usr/sbin/argus-tty-finalize"
 # defensively: config.env missing or unreadable just means no exclusions
 # apply, never a login failure.
 AT_CONFIG_FILE="/etc/argus-tty/config.env"
-# shellcheck disable=SC1091
+# shellcheck disable=SC1090,SC1091
 [[ -r "$AT_CONFIG_FILE" ]] && source "$AT_CONFIG_FILE" 2>/dev/null
 
 mkdir -p "$SESSION_DIR" 2>/dev/null || SESSION_DIR=""
@@ -214,8 +214,8 @@ if [[ -n "$_AUDIT_RC" ]]; then
 # locations — is the ONLY thing sourced for a forced session, so completion
 # scripts relying on /etc/profile.d or the bash-completion package's own
 # dynamic loader never fire here unless sourced explicitly. If your own
-# deploy tooling ships a bash-completion file, `source` it here the same
-# way, guarded by `[[ -f ... ]]` so it's a no-op on hosts that don't have it.
+# deploy tooling ships a bash-completion file, source it here the same way,
+# guarded by a -f test so it's a no-op on hosts that don't have it.
 export HISTFILE="${HIST_FILE}"
 export HISTTIMEFORMAT="[%F %T] "
 export HISTCONTROL=""

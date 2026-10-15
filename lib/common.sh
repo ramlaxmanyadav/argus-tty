@@ -1,5 +1,17 @@
 # lib/common.sh — shared helpers for the argus-tty toolkit.
 # Sourced by install.sh and everything under bin/. Not meant to be run directly.
+#
+# shellcheck disable=SC2148,SC2034,SC2120
+# SC2148 (needs a shebang): this file is a library, only ever sourced, never
+# executed on its own — a shebang would be misleading, not helpful.
+# SC2034 (appears unused): every AT_* path/group constant below IS used, by
+# whichever bin/*.sh script sources this file — shellcheck just can't see
+# across that file boundary when checking this file by itself.
+# SC2120 (require_root "references arguments, but none are passed"): that's
+# intentional — called with no args, require_root's "$@"/"$*" transparently
+# reads the CALLING script's own positional params (plain bash function
+# scoping), which is exactly how its error message shows the real invocation
+# ("use: sudo $0 $*") without the caller having to pass anything explicitly.
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
@@ -156,7 +168,14 @@ ensure_required_packages() {
 
   local pkg missing=()
   for pkg in "${AT_REQUIRED_PACKAGES[@]}"; do
-    dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+    # `dpkg -s` exits 0 even for a package that's been removed but left its
+    # conffiles behind ("deinstall ok config-files") — it only fails if dpkg
+    # has no record of the package at all. That would make this loop treat
+    # a genuinely-missing package (e.g. `apt remove curl` ran at some point)
+    # as present. dpkg-query's actual Status field is the one real signal:
+    # only "install ok installed" means the package's files are in place.
+    [[ "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null)" == "install ok installed" ]] \
+      || missing+=("$pkg")
   done
   [[ ${#missing[@]} -eq 0 ]] && return
 
@@ -279,4 +298,51 @@ load_config() {
   [[ -f "$AT_CONFIG_FILE" ]] || error "$AT_CONFIG_FILE not found — run 'argus-tty install' first."
   # shellcheck disable=SC1090
   source "$AT_CONFIG_FILE"
+}
+
+# retrofit_webapps_rvm_membership — add every existing developer/admin/
+# deployer account, plus AT_WEBAPPS_SVC_USER, onto the webapps group (and
+# rvm, if that group exists) via `usermod -aG`. Idempotent; safe to call on
+# every add-developer/add.sh/bootstrap run, not just once.
+#
+# This is the exact retrofit logic reconfigure.sh used to run inline (the
+# only reason "sudo argus-tty reconfigure" was ever needed after adding a
+# user/app or bootstrapping RVM) — pulled out here so callers that only
+# need THIS can get it without also triggering reconfigure's much heavier,
+# unrelated system wiring (sudoers regeneration, PAM, sshd). Deliberately
+# does nothing beyond group membership: no sudoers/PAM/sshd/file-permission
+# changes, so it can never disturb a per-app shared/do-release override or
+# any other app-level file.
+#
+# Caveat this can't fix (a real PAM/session limit, not a bug): an account
+# with an ALREADY-OPEN login session still has its OLD group list cached —
+# this makes the NEXT login correct, it can't retroactively fix a live
+# session. Callers should still tell the operator to log out/in once.
+retrofit_webapps_rvm_membership() {
+  require_root
+
+  local rvm_suffix=""
+  if getent group "$AT_RVM_GROUP" &>/dev/null; then
+    rvm_suffix=",${AT_RVM_GROUP}"
+  fi
+
+  if id "$AT_WEBAPPS_SVC_USER" &>/dev/null && [[ -n "$rvm_suffix" ]]; then
+    usermod -aG "$AT_RVM_GROUP" "$AT_WEBAPPS_SVC_USER"
+  fi
+
+  local retrofit_groups="${AT_WEBAPPS_GROUP}${rvm_suffix}"
+  local retrofit_count=0
+  # Membership in developer/admin/deployer is via PRIMARY gid
+  # (add-developer.sh does `useradd --gid`/`usermod -g`), not the
+  # secondary-member list `getent group` exposes — match on /etc/passwd's
+  # gid field instead, same as reconfigure.sh's original loop.
+  local dev_gid admin_gid deployer_gid u
+  dev_gid="$(getent group "$AT_GROUP" | cut -d: -f3)"
+  admin_gid="$(getent group "$AT_ADMIN_GROUP" | cut -d: -f3)"
+  deployer_gid="$(getent group "$AT_DEPLOYER_GROUP" | cut -d: -f3)"
+  for u in $(getent passwd | awk -F: -v d="$dev_gid" -v a="$admin_gid" -v p="$deployer_gid" '$4==d || $4==a || $4==p {print $1}'); do
+    usermod -aG "$retrofit_groups" "$u"
+    retrofit_count=$((retrofit_count + 1))
+  done
+  info "Retrofitted $retrofit_count existing developer/admin/deployer account(s) onto: $retrofit_groups"
 }

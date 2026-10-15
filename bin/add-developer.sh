@@ -252,6 +252,12 @@ elif [[ "${GOOGLE_2FA_ENABLED:-false}" == "true" ]]; then
   fi
 fi
 
+# Self-heal webapps/rvm group membership for every existing
+# developer/admin/deployer account (including this one) on every add — no
+# separate "sudo argus-tty reconfigure" needed just because webapps/rvm now
+# exist, or because this account predates them.
+retrofit_webapps_rvm_membership
+
 echo ""
 info "Account ready:"
 printf "  %-14s %s\n" "User:"    "$USERNAME ($DISPLAY_NAME)"

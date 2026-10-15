@@ -114,7 +114,11 @@ install_sudoers() {
       # substitution above), NOT $src (the original) — filtering $src here
       # would silently discard that substitution on any host whose sudo
       # lacks log_output support.
-      content="$(grep -Ev '^[[:space:]]*Defaults:%[A-Za-z0-9_]+[[:space:]]+(log_output|logfile=)' "$tmp")"
+      # `|| true`: grep -v exits 1 if EVERY line matched (nothing left to
+      # print) — if $tmp ever had no content besides these two Defaults
+      # lines, that would otherwise silently abort reconfigure.sh here
+      # under set -e, before the sudoers file is even written.
+      content="$(grep -Ev '^[[:space:]]*Defaults:%[A-Za-z0-9_]+[[:space:]]+(log_output|logfile=)' "$tmp" || true)"
       printf '%s\n' "$content" > "$tmp"
       visudo_out="$(visudo -c -f "$tmp" 2>&1)" || {
         rm -f "$tmp"
@@ -223,24 +227,13 @@ info "$AT_PROFILE_D regenerated."
 
 # ── Retrofit existing developer/admin/deployer accounts into webapps (+
 # rvm, if installed) ─────────────────────────────────────────────────────────
-# New accounts get this from add-developer.sh automatically; this loop is
-# only needed for accounts onboarded before this feature existed.
+# New accounts get this from add-developer.sh automatically (it calls
+# retrofit_webapps_rvm_membership itself — see common.sh); this call is
+# only needed here for accounts onboarded before this feature existed, or
+# before webapps/rvm existed.
 
 section "Retrofitting existing accounts onto webapps/rvm"
-retrofit_groups="${AT_WEBAPPS_GROUP}${rvm_suffix}"
-retrofit_count=0
-# Membership in developer/admin/deployer is via PRIMARY gid (add-developer.sh
-# does `useradd --gid`/`usermod -g`), not the secondary-member list `getent
-# group` exposes — that list would be empty here. Match on /etc/passwd's gid
-# field instead.
-dev_gid="$(getent group "$AT_GROUP" | cut -d: -f3)"
-admin_gid="$(getent group "$AT_ADMIN_GROUP" | cut -d: -f3)"
-deployer_gid="$(getent group "$AT_DEPLOYER_GROUP" | cut -d: -f3)"
-for u in $(getent passwd | awk -F: -v d="$dev_gid" -v a="$admin_gid" -v p="$deployer_gid" '$4==d || $4==a || $4==p {print $1}'); do
-  usermod -aG "$retrofit_groups" "$u"
-  retrofit_count=$((retrofit_count + 1))
-done
-info "Retrofitted $retrofit_count existing developer/admin/deployer account(s) onto: $retrofit_groups"
+retrofit_webapps_rvm_membership
 
 # ── Lock down the installed binaries ────────────────────────────────────────
 

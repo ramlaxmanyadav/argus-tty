@@ -18,7 +18,10 @@ show_one() {
   auth_keys="${home}/.ssh/authorized_keys"
   restriction="(no keys installed)"
   if [[ -s "$auth_keys" ]]; then
-    restriction="$(grep -oE 'from="[^"]*"' "$auth_keys" 2>/dev/null | head -1 | sed -E 's/from="(.*)"/\1/')"
+    # grep exits 1 (no match) for the common case — no restriction set —
+    # which would otherwise abort this whole script under set -e the
+    # instant it hit the first unrestricted account, printing nothing.
+    restriction="$(grep -oE 'from="[^"]*"' "$auth_keys" 2>/dev/null | head -1 | sed -E 's/from="(.*)"/\1/' || true)"
     [[ -n "$restriction" ]] || restriction="any IP"
   fi
   printf "%-16s %s\n" "$u" "$restriction"
