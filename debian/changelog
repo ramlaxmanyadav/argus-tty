@@ -1,34 +1,3 @@
-argus-tty (1.0.8) resolute; urgency=medium
-
-  * No source changes; re-upload. 1.0.5/1.0.6/1.0.7 never appeared on the
-    PPA (not published, not pending, no rejection email for any of them).
-
- -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:26:52 +0530
-
-argus-tty (1.0.7) resolute; urgency=medium
-
-  * No source changes; 1.0.5 and 1.0.6 never appeared on the PPA (not
-    published, not pending, no rejection email) — re-upload under a fresh
-    version per this native package's own rule of never reusing a version
-    number for a retry.
-
- -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:24:28 +0530
-
-argus-tty (1.0.6) resolute; urgency=medium
-
-  * add-developer.sh now calls retrofit_webapps_rvm_membership directly on
-    every onboard (new helper, factored out of reconfigure.sh's inline
-    retrofit loop into lib/common.sh), so an existing account re-run
-    through `argus-tty add` picks up webapps/rvm membership immediately —
-    previously only a separate `argus-tty reconfigure` did this.
-    reconfigure.sh's own retrofit step now just calls the same function.
-  * Drop a stray comment reference to the private, unpublished "bosun"
-    package reintroduced by the refactor above — this project's 1.0.0
-    changelog already documented removing every such reference, and this
-    one shouldn't have come back.
-
- -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:20:19 +0530
-
 argus-tty (1.0.5) resolute; urgency=medium
 
   * Fix: ensure_required_packages (install.sh/reconfigure.sh auto-install)
@@ -53,6 +22,12 @@ argus-tty (1.0.5) resolute; urgency=medium
     fields stay explicit, despite lintian's pedantic suggestions otherwise
     — both are deliberate for staying buildable on older series (focal/
     jammy) this PPA still serves; see debian/changelog's 1.0.0 entry.
+  * add-developer.sh now calls retrofit_webapps_rvm_membership directly on
+    every onboard (new helper, factored out of reconfigure.sh's inline
+    retrofit loop into lib/common.sh), so an existing account re-run
+    through `argus-tty add` picks up webapps/rvm membership immediately —
+    previously only a separate `argus-tty reconfigure` did this.
+    reconfigure.sh's own retrofit step now just calls the same function.
   * Verified end-to-end in a real Ubuntu 26.04 "resolute" container:
     shellcheck clean (warning+) across every shipped script, `lintian`
     clean at default severity, dpkg-buildpackage source build, apt install
@@ -64,7 +39,7 @@ argus-tty (1.0.5) resolute; urgency=medium
     across all three tiers (developer/admin/deployer), including a
     multi-key account and an allow-ip restriction.
 
- -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 16:17:15 +0530
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Thu, 15 Oct 2026 18:14:49 +0530
 
 argus-tty (1.0.4) resolute; urgency=medium
 
