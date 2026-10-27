@@ -1,3 +1,33 @@
+argus-tty (1.0.9) resolute; urgency=medium
+
+  * Found via a real production debugging session: a box where only one
+    account (ubuntu, via a personal ~/.aws/credentials file) could upload
+    session recordings to S3, because argus-tty-finalize runs as the
+    connecting developer/admin/deployer — never as root — so a per-account
+    credentials file only ever authenticates that one account, not the
+    fleet. The correct fix is an EC2 instance role (every account resolves
+    it automatically via the metadata service), but that's not always
+    available (e.g. the EC2 instance and S3 bucket are in different AWS
+    accounts with no cross-account role + bucket policy set up).
+  * reconfigure/status's S3 checks now distinguish "no credentials resolve
+    at all" (almost always: no instance role attached) from "credentials
+    resolve but access still fails" (role attached, policy needs fixing)
+    — these need different fixes, and were previously one generic warning.
+  * New AWS_SHARED_CREDENTIALS_ENABLED/AWS_SHARED_CREDENTIALS_PATH in
+    config.env: an explicit, documented fallback for when an instance role
+    genuinely isn't an option. reconfigure manages one credentials file
+    (root:webapps, 640 — every onboarded account is already a webapps
+    member, no new group needed) and wires every account to it via
+    /etc/environment, idempotently. Never generates or overwrites real
+    credential content, only creates an empty placeholder once.
+  * README: new "Configuring S3 upload" section covering the instance-role
+    setup (including the cross-account role + bucket policy case) and the
+    shared-credentials fallback, with its trade-off stated plainly (one
+    static key shared across every account — SSH session attribution is
+    unaffected, only the AWS-side upload identity becomes shared).
+
+ -- Ram Laxman Yadav <yadavramlaxman@gmail.com>  Tue, 27 Oct 2026 19:04:19 +0530
+
 argus-tty (1.0.5) resolute; urgency=medium
 
   * Fix: ensure_required_packages (install.sh/reconfigure.sh auto-install)
