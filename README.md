@@ -62,7 +62,19 @@ deciding who gets which tier of access.
   in and skip recording — not even for admins.
 - Uploading session files to S3 is handed off to a second helper,
   `argus-tty-finalize`, which authenticates via the instance's IAM role —
-  no access keys on disk. Email notifications go through a **third,
+  no access keys on disk. **This runs as the connecting developer's own
+  uid, not root** — so "run `aws configure` as root (or any one account)
+  and the rest will just work" is a common but incorrect assumption. A
+  per-account `~/.aws/credentials` file only ever authenticates that one
+  Linux account; it does nothing for any other developer/admin/deployer
+  account, current or future. The actual zero-maintenance mechanism is the
+  **EC2 instance role** itself (attached once, at the AWS account level,
+  outside this box — see "Configuring S3 upload" below) — every account on
+  the instance resolves the same role automatically via the metadata
+  service, with no per-account setup ever needed. If `argus-tty status`
+  reports "No usable AWS credentials/IAM role resolved," that's almost
+  always a missing instance role, not a missing per-user config.
+  Email notifications go through a **third,
   privilege-separated helper**, `argus-tty-mailer`: `argus-tty-wrapper`
   just queues a small local file describing the notification (an instant,
   network-free write), and `argus-tty-mailer` — root-only, driven by a
@@ -460,6 +472,73 @@ harmless (just the normal, fully-recorded behavior), but a pattern that's
 too broad is the only way this setting could actually reduce the audit
 trail.
 
+## Configuring S3 upload
+
+`argus-tty-finalize` runs as whichever developer/admin/deployer connected —
+never as root — so it needs AWS credentials that resolve the **same way for
+every account on the box**, not just the one an admin happened to run `aws
+configure` on. The only mechanism that actually does that is an **EC2
+instance role**, set up once at the AWS-account level, outside this
+instance. Argus-tty deliberately never manages AWS credentials itself (see
+`config.env.example`'s own header), so this one-time step is yours to do —
+but once it's done, every current and future account gets working S3
+upload automatically, with nothing further to configure per account.
+
+1. **Create an IAM role** (Console: IAM → Roles → Create role → Trusted
+   entity: AWS service → Use case: EC2) and attach an inline policy:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::<S3_BUCKET>"},
+       {"Effect": "Allow", "Action": "s3:PutObject", "Resource": "arn:aws:s3:::<S3_BUCKET>/<S3_PREFIX>/*"}
+     ]
+   }
+   ```
+2. **Attach it to the instance** — EC2 → Instances → this instance →
+   Actions → Security → **Modify IAM role**. Doesn't require stopping the
+   instance.
+3. **Set `S3_UPLOAD_ENABLED=true`/`S3_BUCKET`/`S3_PREFIX`/`AWS_REGION`** in
+   `/etc/argus-tty/config.env` to match.
+4. **Verify** with `sudo argus-tty status` — it distinguishes "no
+   credentials resolve at all" (almost always: no instance role attached)
+   from "credentials resolve but S3 access still fails" (role attached,
+   policy needs fixing), since those need different fixes.
+
+**The trap to avoid**: if you instead place a personal `~/.aws/credentials`
+file for one account (commonly `root` or whichever account you tested
+with), only *that* account's uploads will work — `aws configure` run as
+one user has no effect on any other account's `aws` calls, since each
+Linux user's credential resolution is independent. A credentials file left
+in an account's home directory also takes priority over the instance role
+for that one account, so if you're migrating from a file-based workaround
+to the proper role, remove the file afterward rather than leaving both in
+place.
+
+### When an instance role genuinely isn't an option
+
+If the EC2 instance and the S3 bucket live in different AWS accounts and
+setting up the cross-account role + bucket policy above isn't available to
+you (no IAM access in one side, org policy restrictions, etc.), argus-tty
+has a machine-level fallback: set `AWS_SHARED_CREDENTIALS_ENABLED=true` and
+`AWS_SHARED_CREDENTIALS_PATH` in `config.env`, then `sudo argus-tty
+reconfigure`. This creates a single credentials file (`root:webapps`, mode
+640 — every onboarded developer/admin/deployer account is already a
+`webapps` member, so no new group is needed) and points every account at
+it automatically via `/etc/environment`, idempotently. `reconfigure` only
+ever creates an empty placeholder the first time — fill in the real
+`aws_access_key_id`/`aws_secret_access_key` yourself afterward; re-running
+`reconfigure` never touches that content again once the file exists.
+
+This is a real trade-off, not a free alternative: every account shares
+**one static AWS credential**, so a compromised account exposes that same
+key, and S3 uploads stop being attributable to which specific account
+wrote a given object (the SSH session audit trail itself is unaffected —
+every `.tty`/`.hist`/`.meta` file is still correctly attributed to the
+exact account that created it; only the AWS-side identity doing the
+`PutObject` call becomes shared). Prefer the instance role unless you have
+a specific reason not to.
+
 ## Configuration reference
 
 Everything below lives in `/etc/argus-tty/config.env` (644, world-readable —
@@ -477,6 +556,8 @@ fresh by `argus-tty-wrapper` on the very next SSH connection with no
 | `S3_BUCKET` | *(blank)* | Destination bucket. Blank skips upload regardless of `S3_UPLOAD_ENABLED`. |
 | `S3_PREFIX` | `argus-tty` | Key prefix under the bucket: `s3://<bucket>/<prefix>/<hostname>/<user>/<session_id>/...`. |
 | `AWS_REGION` | `us-east-1` | Region passed to every `aws` CLI call (upload + the advisory `status`/`reconfigure` connectivity checks). |
+| `AWS_SHARED_CREDENTIALS_ENABLED` | `false` | Fallback for when an EC2 instance role isn't an option (e.g. cross-account EC2/S3). `true` makes `reconfigure` manage one shared credentials file every developer/admin/deployer account uses via `/etc/environment` — see [When an instance role genuinely isn't an option](#when-an-instance-role-genuinely-isnt-an-option) for the trade-off. Leave `false` (the recommended default) if an instance role is set up instead. |
+| `AWS_SHARED_CREDENTIALS_PATH` | `/etc/argus-tty/aws-credentials` | Where that shared credentials file lives (`root:webapps`, 640). `reconfigure` only ever creates an empty placeholder here — it never generates or overwrites the real `aws_access_key_id`/`aws_secret_access_key` content. |
 | `EMAIL_ENABLED` | `false` | Master switch for session start/end email notifications. Directly controls `systemctl enable --now` vs. `disable --now` on `argus-tty-mailer.timer` — `false` means the mailer timer isn't just idle, it's disabled and never runs. |
 | `EMAIL_TO` | `you@example.com` | Notification recipient. |
 | `EMAIL_FROM` | `argus-tty@example.com` | Envelope/`From:` sender address. |

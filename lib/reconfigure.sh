@@ -548,11 +548,35 @@ if [[ "${S3_UPLOAD_ENABLED:-false}" != "true" ]]; then
 elif command -v aws &>/dev/null; then
   info "aws CLI found: $(aws --version 2>&1 | head -1)"
   if [[ -n "${S3_BUCKET:-}" ]]; then
-    info "Testing S3 access to s3://$S3_BUCKET ..."
-    if aws s3 ls "s3://$S3_BUCKET" --region "${AWS_REGION:-us-east-1}" &>/dev/null; then
-      info "S3 access OK"
+    # Two genuinely different failure modes here, each needing a different
+    # fix — distinguish them instead of one generic "access check failed":
+    #   - sts get-caller-identity itself fails -> no credentials resolve AT
+    #     ALL for THIS account (most likely: no IAM instance role attached
+    #     to this EC2 instance — a role, even with zero permissions, always
+    #     resolves an identity via the metadata service; only a missing
+    #     role, or a per-user ~/.aws/credentials override pointing nowhere
+    #     usable, produces this).
+    #   - sts succeeds but the s3 ls below still fails -> an identity DOES
+    #     resolve, it just lacks s3:ListBucket/PutObject on this bucket.
+    # Argus-tty deliberately never manages AWS credentials itself (see
+    # config.env.example — "no access keys to manage"), so this can only
+    # ever report what's wrong, never fix it: attaching/fixing an IAM role
+    # is an AWS-account-level action that has to happen from outside this
+    # instance, by something that already has IAM/EC2 permissions — a
+    # script running ON the instance cannot grant itself a role without
+    # that being a privilege-escalation hole in its own right.
+    if ! aws sts get-caller-identity --region "${AWS_REGION:-us-east-1}" &>/dev/null; then
+      warn "No AWS credentials resolve at all for this account — most likely this EC2 instance has no IAM instance role attached (a role, even an under-permissioned one, always resolves SOME identity; this is what you get when there's none)."
+      warn "Fix: AWS Console -> EC2 -> this instance -> Actions -> Security -> Modify IAM role -> attach a role granting s3:PutObject on arn:aws:s3:::${S3_BUCKET}/${S3_PREFIX:-argus-tty}/* and s3:ListBucket on arn:aws:s3:::${S3_BUCKET}. This is a one-time, account-level change outside this instance — argus-tty can detect this gap but can't close it itself."
+      warn "A per-user ~/.aws/credentials file (if one exists for this account) only fixes THIS account — every other developer/admin/deployer account hits the same gap. The instance role fixes it for all of them at once, current and future, with zero per-account setup."
+      warn "If an instance role genuinely isn't an option (e.g. this instance and the S3 bucket are in different AWS accounts with no cross-account policy set up), set AWS_SHARED_CREDENTIALS_ENABLED=true in $AT_CONFIG_FILE instead — see that variable's comment in config.env.example for the trade-off it accepts."
     else
-      warn "S3 access check failed — verify the instance's IAM role has s3:PutObject on s3://$S3_BUCKET/${S3_PREFIX:-argus-tty}/*"
+      info "Testing S3 access to s3://$S3_BUCKET ..."
+      if aws s3 ls "s3://$S3_BUCKET" --region "${AWS_REGION:-us-east-1}" &>/dev/null; then
+        info "S3 access OK"
+      else
+        warn "Credentials resolve, but S3 access check failed — verify the attached IAM role (or this account's credentials) has s3:PutObject on s3://$S3_BUCKET/${S3_PREFIX:-argus-tty}/* and s3:ListBucket on s3://$S3_BUCKET."
+      fi
     fi
   else
     warn "S3_UPLOAD_ENABLED=true but S3_BUCKET is blank in $AT_CONFIG_FILE — nothing will be uploaded until it's set."
@@ -561,6 +585,59 @@ else
   warn "aws CLI not found — install it so sessions can be uploaded to S3:"
   warn "  curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip"
   warn "  unzip /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install"
+fi
+
+# ── Shared AWS credentials file (fallback for when an instance role isn't
+# an option — see config.env.example's AWS_SHARED_CREDENTIALS_ENABLED for
+# the full trade-off writeup). Idempotent, same marker-rewrite idiom as the
+# PAM/sshd managed blocks above: safe to re-run, never duplicates the
+# /etc/environment line, never touches real credential content once the
+# file exists. ──────────────────────────────────────────────────────────────
+
+section "Shared AWS credentials (gated by AWS_SHARED_CREDENTIALS_ENABLED)"
+
+AT_ENVIRONMENT_FILE="/etc/environment"
+AWS_CREDS_MARKER_START="# BEGIN argus-tty shared AWS credentials (managed by reconfigure.sh)"
+AWS_CREDS_MARKER_END="# END argus-tty shared AWS credentials"
+
+if [[ -f "$AT_ENVIRONMENT_FILE" ]] && grep -qF "$AWS_CREDS_MARKER_START" "$AT_ENVIRONMENT_FILE"; then
+  awk -v start="$AWS_CREDS_MARKER_START" -v end="$AWS_CREDS_MARKER_END" '
+    $0 == start {skip=1}
+    !skip {print}
+    $0 == end {skip=0}
+  ' "$AT_ENVIRONMENT_FILE" > "${AT_ENVIRONMENT_FILE}.tmp"
+  mv "${AT_ENVIRONMENT_FILE}.tmp" "$AT_ENVIRONMENT_FILE"
+fi
+
+if [[ "${AWS_SHARED_CREDENTIALS_ENABLED:-false}" == "true" ]]; then
+  AWS_CREDS_PATH="${AWS_SHARED_CREDENTIALS_PATH:-/etc/argus-tty/aws-credentials}"
+
+  if [[ -f "$AWS_CREDS_PATH" ]]; then
+    info "$AWS_CREDS_PATH already exists — leaving its content untouched."
+  else
+    mkdir -p "$(dirname "$AWS_CREDS_PATH")"
+    cat > "$AWS_CREDS_PATH" <<'EOF'
+[default]
+aws_access_key_id = REPLACE_ME
+aws_secret_access_key = REPLACE_ME
+EOF
+    warn "Created placeholder $AWS_CREDS_PATH — edit it with the real access key/secret before S3 upload will work for anyone."
+  fi
+  chown "root:${AT_WEBAPPS_GROUP}" "$AWS_CREDS_PATH"
+  chmod 640 "$AWS_CREDS_PATH"
+
+  {
+    echo ""
+    echo "$AWS_CREDS_MARKER_START"
+    echo "AWS_SHARED_CREDENTIALS_FILE=${AWS_CREDS_PATH}"
+    echo "$AWS_CREDS_MARKER_END"
+  } >> "$AT_ENVIRONMENT_FILE"
+
+  info "$AWS_CREDS_PATH is readable by root and every '${AT_WEBAPPS_GROUP}' member (every onboarded developer/admin/deployer account already is one)."
+  warn "Every account now shares this ONE AWS credential for S3 upload — see config.env.example's AWS_SHARED_CREDENTIALS_ENABLED comment for the trade-off this accepts. Prefer an EC2 instance role instead unless you have a specific reason not to (e.g. the EC2 instance and S3 bucket are in different AWS accounts and an instance role + cross-account bucket policy isn't set up)."
+  warn "New shell sessions pick up AWS_SHARED_CREDENTIALS_FILE automatically (it's in /etc/environment, read by PAM at login) — no re-login needed for the next SSH connection, but anyone ALREADY connected needs to reconnect to pick it up."
+else
+  info "AWS_SHARED_CREDENTIALS_ENABLED=false — no shared credentials file managed (the recommended default; relies on an EC2 instance role instead, or per-account credentials if you've set those up yourself)."
 fi
 
 command -v script &>/dev/null || warn "'script' binary not found — install bsdutils: sudo apt-get install -y bsdutils"

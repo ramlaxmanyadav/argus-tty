@@ -131,12 +131,21 @@ if [[ -f "$AT_CONFIG_FILE" ]]; then
     warn "aws CLI not installed — skipping S3 check."
   elif ! AWS_METADATA_SERVICE_TIMEOUT=1 AWS_METADATA_SERVICE_NUM_ATTEMPTS=1 \
       timeout 3 aws sts get-caller-identity --region "${AWS_REGION:-us-east-1}" &>/dev/null; then
-    warn "No usable AWS credentials/IAM role resolved — S3 upload will be skipped for every session."
+    # Checked as whichever account is running `argus-tty status` right now
+    # (usually root via sudo) — this account having no credentials doesn't
+    # prove every account does; re-run as a specific developer/deployer
+    # account (`sudo -u <user> aws sts get-caller-identity`) if uploads are
+    # failing for them specifically but this check passes for root.
+    warn "No usable AWS credentials/IAM role resolved for this account — S3 upload will be skipped for every session run as this account."
+    warn "Most likely cause: no IAM instance role attached to this EC2 instance (a role, even under-permissioned, always resolves SOME identity — this exact error is what you get when there's none at all)."
+    warn "Fix (one-time, outside this instance): AWS Console -> EC2 -> this instance -> Actions -> Security -> Modify IAM role -> attach one granting s3:PutObject on arn:aws:s3:::${S3_BUCKET:-<bucket>}/${S3_PREFIX:-argus-tty}/* + s3:ListBucket on the bucket. Argus-tty never manages AWS credentials itself, so it can only report this gap, not close it — see config.env.example's own S3 section."
+    warn "A per-user ~/.aws/credentials file only fixes the one account it's placed in; the instance role fixes every current and future developer/admin/deployer account at once."
+    warn "If an instance role isn't an option (e.g. cross-account EC2/S3), set AWS_SHARED_CREDENTIALS_ENABLED=true and re-run 'argus-tty reconfigure' instead — see config.env.example for the trade-off."
   elif [[ -n "${S3_BUCKET:-}" ]]; then
     if aws s3 ls "s3://${S3_BUCKET}" --region "${AWS_REGION:-us-east-1}" &>/dev/null; then
       ok "S3 reachable: s3://${S3_BUCKET}"
     else
-      warn "Cannot reach s3://${S3_BUCKET} — check IAM role has s3:PutObject/s3:ListBucket"
+      warn "Credentials resolve, but cannot reach s3://${S3_BUCKET} — check the attached IAM role (or this account's credentials) has s3:PutObject/s3:ListBucket on it"
     fi
   else
     warn "S3_UPLOAD_ENABLED=true but S3_BUCKET is blank — nothing will be uploaded until it's set."
